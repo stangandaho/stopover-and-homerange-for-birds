@@ -1,5 +1,6 @@
 # Load setup
 source("scripts/utils.R")
+source("setup.R")
 
 
 dataset_root <- "E:\\David\\Base_David\\"
@@ -27,7 +28,7 @@ all_hiv_data <- lapply(all_species_names, function(x){
                                           decrease_by = 0.05,
                                           datetime = 'timestamp',
                                           format = "%Y-%m-%d %H:%M:%OS",
-                                          threshold = 60,
+                                          threshold = 60*60,
                                           only = TRUE)
     
     ## Add i-th wintering information
