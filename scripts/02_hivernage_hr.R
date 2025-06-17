@@ -100,14 +100,15 @@ for (sp_id in species_id) {
   }
   
   # Calculate fidelity for each sp_id
-  names(all_wintering) <- NULL
-  intersections <- sf::st_area(do.call(sf::st_intersection, all_wintering))
-  unions <- sf::st_area(do.call(sf::st_union, all_wintering))
-  fidelity <- intersections/unions
-  
-  fidelity_df <- rbind(fidelity_df, data.frame(Species = sp_id, Fidelity = fidelity))
-  
-  
+  if (lenght(all_wintering) > 1) {
+    names(all_wintering) <- NULL
+    intersections <- sf::st_area(do.call(sf::st_intersection, all_wintering))
+    unions <- sf::st_area(do.call(sf::st_union, all_wintering))
+    fidelity <- intersections/unions
+    
+    fidelity_df <- rbind(fidelity_df, data.frame(Species = sp_id, Fidelity = fidelity))
+    
+  }
 }
 }
 
@@ -130,3 +131,23 @@ summarise(N = round(mean(N)), `Min area` = min(Min, na.rm = TRUE),
           `Temps d'hivernage` = mean(`Temps d'hivernage`, na.rm = TRUE)) %>% 
   ungroup() %>% 
   write.csv("tables/home_range_stats_per_species.csv", row.names = FALSE)
+
+
+## Plot Home range: 
+ind_oi <- c("Recurvirostra avosetta [FRP-FS117863]_Hivernage1",
+            "Himantopus himantopus [FRP-FA63883]_Hivernage1", 
+            "Chroicocephalus genei [FRP-FS89746]_Hivernage1",
+            "Gelochelidon nilotica [FRP-GE13338]_Hivernage1",
+            "Thalasseus sandvicensis [FRP-GE13347]_Hivernage 1")
+
+all_hr <- paste0("home_range/", ind_oi, ".shp")
+
+hr_sf <- lapply(all_hr, function(x){
+  sf::read_sf(x) %>% 
+    dplyr::mutate(individual = gsub(".shp$", "", basename(x)))
+}) %>% dplyr::bind_rows() %>% 
+  dplyr::mutate(indi = gsub("_Hivernage1|_Hivernage 1", "", individual))
+
+## 
+ggplot(data = hr_sf %>% dplyr::filter(individual == ind_oi[1]))+
+  geom_sf()

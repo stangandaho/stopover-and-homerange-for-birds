@@ -73,7 +73,7 @@ home_range <- function(data,
                        percent = 95,
                        grid = 1000,
                        save_dir = "home_range",
-                       species_name = "elephant_male") {
+                       species_name = "species_name") {
   ### Calculate a
   data <- data %>%
     dplyr::rename(lon = lon, lat = lat)
@@ -148,3 +148,37 @@ fix_name <- function(data, species_col) {
                 Species = case_when(grepl('Thau', !!dplyr::sym(species_col)) ~ "Thalasseus sandvicensis", 
                                     TRUE ~ !!dplyr::sym(species_col)))
 }
+
+
+## Afinity
+afinity_index <- function(data, 
+                    lon = "Longitude",
+                    lat = "Latitude",
+                    crs = "EPSG:4326",
+                    season = "Season",
+                    percent = 95,
+                    method = "HR",
+                    grid = 1000) {
+  
+  data <- data %>% 
+    dplyr::rename(Name = !!dplyr::sym(season), lon = lon, lat = lat) %>% 
+    dplyr::select(Name, lon, lat)
+  
+  xy <- sp::SpatialPointsDataFrame(coords = data[, c("lon", "lat")], data = data)
+  proj4string(xy) <- CRS("+proj=longlat +datum=WGS84")
+  # Define EPSG:6933
+  equal_area_crs <- CRS("+proj=cea +lon_0=0 +lat_ts=0 +datum=WGS84 +units=m +no_defs")
+  xy <- sp::spTransform(xy, equal_area_crs)
+  
+  home_range <- adehabitatHR::kernelUD(xy = xy[, 1],
+                                       h = "LSCV",
+                                       grid = grid, same4all = TRUE)
+  
+  ovlp <- kerneloverlaphr(x = home_range, meth = method, 
+                          percent = percent, conditional=TRUE)
+  
+  return(ovlp)
+  
+}
+
+
