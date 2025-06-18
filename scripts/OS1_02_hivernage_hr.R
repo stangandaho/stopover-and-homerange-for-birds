@@ -148,6 +148,14 @@ hr_sf <- lapply(all_hr, function(x){
 }) %>% dplyr::bind_rows() %>% 
   dplyr::mutate(indi = gsub("_Hivernage1|_Hivernage 1", "", individual))
 
-## 
-ggplot(data = hr_sf %>% dplyr::filter(individual == ind_oi[1]))+
-  geom_sf()
+## Merge home range
+all_hr_files <- list.files(path = "home_range", pattern = ".shp$", 
+                           full.names = TRUE)
+all_hr <- lapply(all_hr_files, function(x){
+  ind_name <- strsplit(basename(x), split = "\\.")[[1]][1]
+  sf::read_sf(x) %>% 
+    sf::st_cast(to = "POLYGON") %>% 
+    dplyr::mutate(individual = ind_name)
+}) %>% dplyr::bind_rows()
+
+sf::write_sf(all_hr, "home_range/all_hr.shp")

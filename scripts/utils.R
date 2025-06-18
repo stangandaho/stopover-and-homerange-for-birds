@@ -181,4 +181,40 @@ afinity_index <- function(data,
   
 }
 
+calc_angle <- function(x) {
+  angle <- 90 - 360 * (x - 0.5) / length(x)
+  print(ifelse(angle < -90, angle + 180, angle))
+  ifelse(angle < -90, angle + 180, angle)
+}
 
+
+pairwise_fisher <- function (xtab, p.adjust.method = "holm", detailed = FALSE, ...) 
+{
+  if (is.data.frame(xtab)) 
+    xtab <- as.matrix(xtab)
+  if (ncol(xtab) > 2 & nrow(xtab) == 2) 
+    xtab <- t(xtab)
+  if (is.null(colnames(xtab)) | any(0 %in% nchar(colnames(xtab)))) {
+    colnames(xtab) <- paste0("col", 1:ncol(xtab))
+  }
+  if (is.null(rownames(xtab)) | any(0 %in% nchar(rownames(xtab)))) {
+    rownames(xtab) <- paste0("row", 1:nrow(xtab))
+  }
+  # if (ncol(xtab) > 2) {
+  #   stop("A two-dimensionnal contingency table required.")
+  # }
+  compare_pair <- function(rows, xtab, ...) {
+    rows <- as.character(rows)
+    fisher_test(xtab[rows, ], detailed = detailed, ...) %>% 
+      add_columns(group1 = rows[1], group2 = rows[2], .before = 1) %>% 
+      keep_only_tbl_df_classes()
+  }
+  args <- c(as.list(environment()), list(...)) %>% add_item(method = "fisher_test")
+  comparisons <- rownames(xtab) %>% .possible_pairs()
+  results <- comparisons %>% map(compare_pair, xtab, ...) %>% 
+    bind_rows() %>% adjust_pvalue("p", method = p.adjust.method) %>% 
+    add_significance("p.adj") %>% mutate(p.adj = signif(.data$p.adj, 
+                                                        digits = 3)) %>% select(-.data$p.signif)
+  results %>% set_attrs(args = args) %>% add_class(c("rstatix_test", 
+                                                     "fisher_test"))
+}
