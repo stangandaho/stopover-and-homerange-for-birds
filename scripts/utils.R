@@ -200,9 +200,9 @@ pairwise_fisher <- function (xtab, p.adjust.method = "holm", detailed = FALSE, .
   if (is.null(rownames(xtab)) | any(0 %in% nchar(rownames(xtab)))) {
     rownames(xtab) <- paste0("row", 1:nrow(xtab))
   }
-  # if (ncol(xtab) > 2) {
-  #   stop("A two-dimensionnal contingency table required.")
-  # }
+  if (ncol(xtab) > 2) {
+    stop("A two-dimensionnal contingency table required.")
+  }
   compare_pair <- function(rows, xtab, ...) {
     rows <- as.character(rows)
     fisher_test(xtab[rows, ], detailed = detailed, ...) %>% 

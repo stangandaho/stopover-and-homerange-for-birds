@@ -8,7 +8,9 @@ lulc_color <- c('#419bdf', '#397d49', '#88b053', '#7a87c6', '#e49635',
 
 ## Impor Land Use Land Cover metadata
 lulc <- read.csv("datasets/LULC.csv") %>% 
-  dplyr::mutate(Class_fr = class_name_fr)
+  dplyr::mutate(Class_fr = class_name_fr) %>% 
+  dplyr::relocate(Class_fr, .before = 2)
+write.csv(lulc, "tables/LULC_FR.csv", row.names = FALSE)
 
 ## Import Home range and relevant LULC data
 # This was processed in Google Earth Engine at this 
@@ -79,12 +81,17 @@ ggsave("plots/habitat_type.jpeg", width = 25, height = 25, dpi = 150, units = "c
 
 
 
-## Dependance analysis
+## Dependence analysis
 # H0 : No independce => p-value >= 0.05
 fisher_extact_test <- maimer::mm_to_community(data = hr_lulc, species_column = individual,
                         site_column = Class_fr, size_column = n,
                         values_fill = 0) %>% 
   tibble::column_to_rownames("Class_fr") 
+## Write contingency table
+write.csv(fisher_extact_test, "tables/contengency_table_species_habitat.csv",
+          fileEncoding = "ISO-8859-1")
+
+# Fisher Exact test
 fisher_extact_test %>%
   fisher.test(simulate.p.value=TRUE)
 # p-value = 0.0004998
