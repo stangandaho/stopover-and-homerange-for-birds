@@ -218,3 +218,11 @@ pairwise_fisher <- function (xtab, p.adjust.method = "holm", detailed = FALSE, .
   results %>% set_attrs(args = args) %>% add_class(c("rstatix_test", 
                                                      "fisher_test"))
 }
+
+Q1 <- function(x){
+  round(quantile(x)[[2]], 2)
+}
+
+Q3 <- function(x){
+  round(quantile(x)[[4]], 2)
+}

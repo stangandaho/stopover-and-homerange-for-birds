@@ -1,26 +1,30 @@
 # Load setup
 source("scripts/utils.R")
+source("setup.R")
 
-
-dataset_root <- "E:\\David\\Base_David\\"
+dataset_root <- "E:\\David\\Base_David2\\"
 
 all_files <- list.files(path = dataset_root, pattern = ".csv$", full.names = TRUE,
                        recursive = TRUE)
 
 ## Select only the part for migration
 migration_files <- all_files[grepl(pattern = "igration", all_files)]
+phase_pattern <- "Nord_Sud" # "Sud_Nord"#To again with Sud_Nord
+mf <- migration_files[grepl(phase_pattern, migration_files)]
 
 # Select folder that point to individual birds
-all_species_names <- lapply(migration_files, function(x){
+phase <- "nord_sud"; 
+all_species_names <- lapply(mf, # Come back to change to mf_nord_sud 
+                            function(x){
   split <- dirname(dirname(dirname(x)))
   split
 }) %>% unlist() %>% unique()
 
 all_vol_data <- lapply(all_species_names, function(x){
   all_in_file <- list.files(path = x, pattern = ".csv$", full.names = TRUE, recursive = TRUE)
-  mf <- all_in_file[grepl(pattern = "igration", all_in_file)]
+  mf <- all_in_file[grepl(pattern = phase_pattern, all_in_file)]
 
-  ind_vol_data <- lapply(all_in_file, function(y){
+  ind_vol_data <- lapply(mf, function(y){
     read.csv(y, check.names = FALSE)
   }) %>% dplyr::bind_rows() %>% 
     dplyr::select("location-lat", "location-long", "timestamp", "individual-local-identifier") %>% 
@@ -33,6 +37,7 @@ all_vol_data <- lapply(all_species_names, function(x){
                       only = TRUE)
   
 })
+
 # Area of Interest Extend
 aoi_extend <- read_sf("datasets/aoi_extend/aoi_extend.shp")
 
@@ -80,7 +85,7 @@ for (df in all_vol_data) {
   total_stopover <- nrow(stopover_sf %>% dplyr::filter(stopover_id != 'NA'))
   
   # Write to disk
-  shp_file <- paste0("datasets/stopovers/", species_id, ".shp")
+  shp_file <- paste0("datasets/stopovers/", phase, "/", species_id, ".shp")
   if(file.exists(shp_file)){sf::st_delete(shp_file)}
   sf::write_sf(stopover_sf, shp_file)
   
@@ -103,7 +108,7 @@ for (df in all_vol_data) {
       axis.text = element_text(size = 10)
     )
   
-  ggsave(plot = plt, paste0("plots/stopovers/", species_id, ".jpeg"), width = 15, height = 20,
+  ggsave(plot = plt, paste0("plots/stopovers/", species_id, "_", phase, ".jpeg"), width = 15, height = 20,
          units = "cm", dpi = 250)
   
 }
@@ -114,33 +119,36 @@ species_so <- stopover_table %>%
   mutate(individual = gsub(pattern = "\\s*\\[FRP-[A-Za-z0-9]+\\]|^\\d*_|\\s*\\d*$", 
                            "", individual),
          individual = case_when(grepl('Tha', individual) ~ "Thalasseus sandvicensis", 
-                                TRUE ~ individual))
-write.csv(stopover_table, "tables/stopovers.csv", row.names = FALSE)
+                                TRUE ~ individual),
+         phase = phase)
+write.csv(stopover_table, paste0("tables/stopovers_", phase, ".csv"), row.names = FALSE)
 
 so_stats <- lapply(unique(species_so$individual), function(x){
   species_so %>% 
     dplyr::filter(individual == x) %>% 
     dplyr::select(total_stopover) %>% 
-    maimer::mm_describe_df(fn = list('sd', 'std_error')) %>% 
+    maimer::mm_describe_df(fn = list('sd', 'std_error', "sum")) %>% 
     mutate(species = x)
 }) %>% dplyr::bind_rows() %>% 
   dplyr::select(-Variable) %>% 
   dplyr::relocate(species, .before = 1)
   
-write.csv(so_stats, "tables/stopovers_statistics.csv", row.names = FALSE)
-species_so <- read.csv( "tables/stopovers.csv")
-species_so %>% summarise(ct = sum(total_stopover), .by = 'individual')
+write.csv(so_stats, paste0("tables/stopovers_statistics_", phase, ".csv"), row.names = FALSE)
 
 # Apply statistics test
-rstatix::kruskal_test(species_so %>% filter(individual != ''), formula = total_stopover ~ individual)
-summary(aov(data=species_so, formula = total_stopover ~ individual))
-# A tibble: 1 × 6
-# .y.                n statistic    df      p method        
-# * <chr>          <int>     <dbl> <int>  <dbl> <chr>         
-#   1 total_stopover    38      9.44     4 0.0511 Kruskal-Wallis
+kt <- rstatix::kruskal_test(species_so %>% filter(individual != ''), 
+                      formula = total_stopover ~ individual)
+kt
+if (kt$p < 0.05) {
+  rstatix::dunn_test(species_so %>% filter(individual != ''), 
+                     formula = total_stopover ~ individual) %>% 
+  write.csv(paste0("tables/stopovers_dunn_test_", phase, ".csv"), row.names = FALSE)
+}
+
+kt %>% write.csv(paste0("tables/kruskal_test_stopover", "_", phase, ".csv"))
 
 # Import back stopover site to merge and plot per species
-so_sf <- list.files(path = "datasets/stopovers/", pattern = ".shp$", full.names = TRUE) %>% 
+so_sf <- list.files(path = paste0("datasets/stopovers/", phase), pattern = ".shp$", full.names = TRUE) %>% 
   lapply(X = ., function(x){
     sf::read_sf(x, quiet = TRUE) %>% 
       dplyr::mutate(Species = basename(x)) %>% 
@@ -171,5 +179,5 @@ so_plot <- lapply(unique(so_sf$Species), function(x){
 
 
 cowplot::plot_grid(plotlist = so_plot, ncol = 5, nrow = 1)
-ggsave(paste0("plots/stopovers/stopovers_per_species.jpeg"), width = 35, height = 15,
+ggsave(paste0("plots/stopovers/stopovers_per_species_", phase, ".jpeg"), width = 35, height = 15,
        units = "cm", dpi = 250)

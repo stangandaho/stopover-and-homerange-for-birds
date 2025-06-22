@@ -3,7 +3,7 @@ source("scripts/utils.R")
 source("setup.R")
 
 
-dataset_root <- "E:\\David\\Base_David\\"
+dataset_root <- "E:\\David\\Base_David2\\"
 
 all_files <- list.files(path = dataset_root, pattern = ".csv$", full.names = TRUE,
                         recursive = TRUE)
@@ -75,22 +75,21 @@ for (sp_id in species_id) {
     
     hr <- home_range(data = wintering_df, grid = 1000,
                      lon = "location-long", lat = "location-lat",
-                     species_name = paste0(sp_id, "_", hiv)
-    )
+                     species_name = paste0(sp_id, "_", hiv))
     
     #total_site <- length(st_geometry(hr)[[1]])
     total_area <- as.numeric(st_area(st_geometry(hr)))/1e6 # km2
-    print(total_area)
+    
     # wintering time
     wintering_time <- base::diff(range(wintering_df$datetime), units = 'days')
-    
     sites <- as.numeric(sf::st_area(hr %>% st_cast(to = "POLYGON")))/1e6
     sites_stats <- maimer::mm_describe_df(data.frame(sites = sites), 
-                                          fn = list('sd', 'sum', 
-                                                    'std_error')) %>% 
+                                          fn = list('sd', 'sum', 'std_error',
+                                                    "Q1", "Q3")) %>% 
       dplyr::mutate(Hivernage = hiv,
                     `Temps d'hivernage` = wintering_time, 
                     Species = sp_id)
+    print(sites_stats)
     all_stat <- rbind(all_stat, sites_stats)
     
     
@@ -100,16 +99,16 @@ for (sp_id in species_id) {
   }
   
   # Calculate fidelity for each sp_id
-  if (lenght(all_wintering) > 1) {
+  if (length(all_wintering) > 1) {
     names(all_wintering) <- NULL
     intersections <- sf::st_area(do.call(sf::st_intersection, all_wintering))
     unions <- sf::st_area(do.call(sf::st_union, all_wintering))
     fidelity <- intersections/unions
-    
     fidelity_df <- rbind(fidelity_df, data.frame(Species = sp_id, Fidelity = fidelity))
     
   }
 }
+
 }
 
 # Write all_stat and fidelity_df
@@ -125,10 +124,12 @@ all_stat <- read.csv("tables/home_range_stats.csv", check.names = FALSE) %>%
   dplyr::mutate(Hivernage = gsub("\\s*", "", Hivernage ))
 
 all_stat %>% group_by(Species, Hivernage) %>% 
-summarise(N = round(mean(N)), `Min area` = min(Min, na.rm = TRUE), 
-          `Max area` = max(Max, na.rm = TRUE), `Mean area` = mean(Mean, na.rm = TRUE),
+summarise(N = round(mean(N)), `Min area` = mean(Min, na.rm = TRUE), 
+          `Max area` = mean(Max, na.rm = TRUE), `Mean area` = mean(Mean, na.rm = TRUE),
           `SE area` = mean(std_error, na.rm = TRUE),
-          `Temps d'hivernage` = mean(`Temps d'hivernage`, na.rm = TRUE)) %>% 
+          Median = mean(Median),
+          `Temps d'hivernage` = mean(`Temps d'hivernage`, na.rm = TRUE),
+          Q1 = mean(Q1), Q3 = mean(Q3)) %>% 
   ungroup() %>% 
   write.csv("tables/home_range_stats_per_species.csv", row.names = FALSE)
 

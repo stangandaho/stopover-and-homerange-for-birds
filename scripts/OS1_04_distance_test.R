@@ -10,21 +10,27 @@ wintering_data <- read.csv("datasets/hivernages.csv", check.names = FALSE) %>%
 indentifier <- unique( wintering_data$`individual-local-identifier`)
 
 all_distance <- lapply(indentifier, function(x){
-  ind_distance <- wintering_data %>% 
+  ind_distance_df <- wintering_data %>% 
     dplyr::filter(`individual-local-identifier` == x)
-  hiv <- unique(ind_distance$th_hivernage)
+  hiv <- unique(ind_distance_df$th_hivernage)
   
   hiv_data <- lapply(hiv, function(y){
-    ind_distance <- ind_distance %>% 
+    ind_distance <- ind_distance_df %>% 
       dplyr::filter(th_hivernage == y) %>% 
       sf::st_as_sf(coords = c("location-long", "location-lat"), crs = 4326) %>% 
       dplyr::summarise(geometry = sf::st_union(geometry)) %>% 
       sf::st_cast(to = "LINESTRING") %>% 
       sf::st_length() %>% 
       as.numeric()
-    
+    ## Time
+    days <- ind_distance_df %>% 
+      dplyr::filter(th_hivernage == y) %>% 
+      dplyr::mutate(datetime = strptime(datetime, format = "%Y-%m-%d %H:%M:%S")) %>% 
+      dplyr::arrange(datetime) %>% tidyr::drop_na()
+
+    days <- as.numeric(diff(range(days$datetime), units = 'days'))
     ind_distance <- ind_distance/1000
-    data.frame(individual = x, distance = ind_distance, hivernage = y)
+    data.frame(individual = x, distance = ind_distance, ndays = days, hivernage = y)
   }) %>% dplyr::bind_rows()
   
 }) %>% dplyr::bind_rows()
@@ -32,6 +38,36 @@ all_distance <- lapply(indentifier, function(x){
 ## Write to disk
 write.csv(all_distance, "tables/wintering_distance.csv", row.names = FALSE)
 
+# Weighted distance
+weighted_distance <- all_distance %>% 
+  rename(Species = individual) %>%
+  fix_name(species_col = "Species") %>% 
+  dplyr::mutate(weighted = distance * ndays) %>% 
+  summarise(`Distance pondérée` = sum(weighted)/sum(ndays), .by = c("Species")) %>% 
+  rename(Espèce = Species) %>% 
+  arrange(`Distance pondérée`)
+  
+weighted_distance %>% 
+  write.csv("tables/wintering_weighted_distance.csv", row.names = FALSE)
+  
+# Historgram
+weighted_distance$Espèce <- factor(weighted_distance$Espèce, levels = weighted_distance$Espèce)
+weighted_distance %>% 
+  ggplot(mapping = aes(x = Espèce, y = `Distance pondérée`))+
+  geom_col(width = .7)+
+  geom_label(mapping = aes(label = paste0(round(`Distance pondérée`, 2)),
+                           y = `Distance pondérée` + 20), size = 8)+
+  theme_minimal()+
+  labs(x = "Espèces", y = "Distances pondérées (km)")+
+  theme(
+    axis.text = element_text(size = 18, colour = "gray30", face = "italic"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.x = element_text(margin = margin(t = 1, b = 1, unit = "lines")),
+    axis.title.y = element_text(margin = margin(r = 1, l = 0.5,unit = "lines")),
+    axis.title = element_text(size = 20, colour = "gray10", face = "bold")
+  )
+ggsave("plots/wintering_weighted_distance.jpeg", width = 14, height = 10, units = "cm")
 ## Read back (not necessary if all_distance was runned)
 all_distance <- read.csv("tables/wintering_distance.csv", check.names = FALSE)
 
