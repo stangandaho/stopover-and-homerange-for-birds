@@ -13,7 +13,7 @@ phase_pattern <- "Nord_Sud" # "Sud_Nord"#To again with Sud_Nord
 mf <- migration_files[grepl(phase_pattern, migration_files)]
 
 # Select folder that point to individual birds
-phase <- "nord_sud"; 
+phase <- "sud_nord"; 
 all_species_names <- lapply(mf, # Come back to change to mf_nord_sud 
                             function(x){
   split <- dirname(dirname(dirname(x)))
@@ -179,5 +179,5 @@ so_plot <- lapply(unique(so_sf$Species), function(x){
 
 
 cowplot::plot_grid(plotlist = so_plot, ncol = 5, nrow = 1)
-ggsave(paste0("plots/stopovers/stopovers_per_species_", phase, ".jpeg"), width = 35, height = 15,
-       units = "cm", dpi = 250)
+ggsave(paste0("plots/stopovers/stopovers_per_species_", phase, ".jpeg"), width = 30, height = 10,
+       units = "cm", dpi = 150)
