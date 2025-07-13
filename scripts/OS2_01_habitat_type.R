@@ -19,7 +19,10 @@ lulc <- read.csv("datasets/overallHabitatProp.csv") %>%
   dplyr::select(-pre) %>% 
   left_join(y = data.frame(Class = as.character(0:8), Class_name = class_name_fr),
             by = "Class") %>% 
-  summarise(prop = mean(prop), .by = c("Species", "Class_name"))
+  ## Drop Neige et glace
+  dplyr::filter(Class_name != "Neige et glace") %>% 
+  summarise(prop = mean(prop), .by = c("Species", "Class_name")) 
+
 
 lulc$Class_name <- factor(lulc$Class_name, levels = class_name_fr)
 
