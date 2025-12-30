@@ -17,8 +17,8 @@ if (! "pak" %in% rownames(installed.packages())) {
   install.packages(pak)
 }
 
-if (! "maimer" %in% rownames(installed.packages())) {
-  pak::pkg_install("stangandaho/maimer")
+if (! "ct" %in% rownames(installed.packages())) {
+  pak::pkg_install("stangandaho/ct")
 }
 
 packages <- c("sf", "dplyr", "ggplot2", "tidyr", "giscoR", 

@@ -1,0 +1,7 @@
+".y.","group1","group2","n1","n2","statistic","p","p.adj","p.adj.signif"
+"duration","Gelochelidon nilotica","Himantopus himantopus",20,18,-0.253880737473926,0.799587696606512,0.799587696606512,"ns"
+"duration","Gelochelidon nilotica","Recurvirostra avosetta",20,5,1.94662502452987,0.0515797062083036,0.206318824833214,"ns"
+"duration","Gelochelidon nilotica","Thalasseus sandvicensis",20,9,-1.64855044468686,0.0992397681278578,0.297719304383573,"ns"
+"duration","Himantopus himantopus","Recurvirostra avosetta",18,5,2.08851503218754,0.0367514008505516,0.183757004252758,"ns"
+"duration","Himantopus himantopus","Thalasseus sandvicensis",18,9,-1.41879775676025,0.155957986884735,0.311915973769471,"ns"
+"duration","Recurvirostra avosetta","Thalasseus sandvicensis",5,9,-2.93133112076302,0.00337512820279847,0.0202507692167908,"*"

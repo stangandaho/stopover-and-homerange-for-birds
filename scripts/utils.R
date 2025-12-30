@@ -17,49 +17,76 @@ detect_stopovers <- function(df,
                              radius_km = 20, 
                              min_duration_hrs = 24) {
   df <- df %>% 
-    dplyr::rename('longitude' = longitude, "latitude" = latitude, "timestamp" = timestamp)
+    dplyr::rename('longitude' = longitude, "latitude" = latitude, "timestamp" = timestamp) %>% 
+    dplyr::arrange(timestamp)
   
-  df <- df %>% arrange(timestamp)
-  df$stopover_id <- NA_integer_
+  
+  #df$stopover_id <- NA_integer_
+  #to_return <- data.frame()
   
   i <- 1
   stopover_id <- 1
+  dynamic_stopover_table <- data.frame()
   
-  while (i <= nrow(df)) {
-    center_point <- sf::st_as_sf(x = data.frame(lon = df$longitude[i], 
-                                                lat = df$latitude[i]),
-                                 coords = c("lon", "lat"), crs = 4326)
-    
-    # Compute distances from current center to all points
-    dists <- sf::st_distance(x = center_point,
-                             y = sf::st_as_sf(x = data.frame(lon = df$longitude, 
-                                                         lat = df$latitude),
-                                              coords = c("lon", "lat"),
-                                              crs = 4326)
-                             ) / 1000  # to km
-    dists <- as.numeric(dists)
-
-    # Get indices within radius
-    in_radius_idx <- which(dists <= radius_km)
-    
+  while (nrow(df) >= 1 && i <= nrow(df)) {
+  # print(paste0("I = ", i))
+  # print(paste0("NROW = ", nrow(df)))
+  # print(data.frame(lon = df$longitude[i], 
+  #                  lat = df$latitude[i]))
+  center_point <- sf::st_as_sf(x = data.frame(lon = df$longitude[i], 
+                                              lat = df$latitude[i]),
+                               coords = c("lon", "lat"), crs = 4326)
+  
+  dists <- sf::st_distance(x = center_point,
+                           y = sf::st_as_sf(x = data.frame(lon = df$longitude, 
+                                                           lat = df$latitude),
+                                            coords = c("lon", "lat"),
+                                            crs = 4326)
+  ) %>% as.numeric()/ 1000  # to km
+  
+  # Get indices within radius
+  in_radius_idx <- which(dists <= radius_km)
+  
     # Check if time span in this group is ≥ 24 hours
     time_span <- difftime(df$timestamp[max(in_radius_idx)],
                           df$timestamp[min(in_radius_idx)],
                           units = "hours")
     
     if (length(in_radius_idx) >= 2 && time_span >= min_duration_hrs) {
-      # Assign stopover ID to these points
-      df$stopover_id[in_radius_idx] <- stopover_id
-      stopover_id <- stopover_id + 1
       
-      # Skip to first point outside the current stopover radius
-      i <- max(in_radius_idx) + 1
+      stpv_df <- df[in_radius_idx, ]
+      stpv_df$stopover_id <- stopover_id
+      
+      # First point date
+      fp_date <- stpv_df %>% 
+        dplyr::slice(1) %>% 
+        dplyr::pull(timestamp)
+      # Last point date
+      lp_date <- stpv_df %>% 
+        dplyr::slice(nrow(stpv_df)) %>% 
+        dplyr::pull(timestamp)
+      
+      # Update stopover table
+      stpv_df <- stpv_df %>% 
+        mutate(first_stopover_date = fp_date, last_stopover_date = lp_date)
+      
+      # Update stopover id for the next detection
+      
+      stopover_id <- stopover_id + 1
+      # Remove all point after last point in the previous stop over
+      df <- df %>% 
+        dplyr::filter(timestamp > lp_date)
+      
+      i <- 1
+      #i <- max(in_radius_idx) + 1
+      dynamic_stopover_table <- rbind(dynamic_stopover_table, stpv_df)
     } else {
       i <- i + 1
     }
+    
   }
   
-  return(df)
+  return(dynamic_stopover_table)
 }
 
 # Standar error
@@ -116,39 +143,6 @@ home_range <- function(data,
   
   return(hr_sf)
 }
-
-
-## Track independent value check
-# This function is an extension of maimer::mm_independence, whose filter 
-# data to return only observations that have at least a given time interval
-# to (threshold) next observation. The particluarity of track_independent is to set 
-# set at_least that require the minimum number of observation to keep in the 
-# output. While this condition is not met, the threshlod will start by decreasing 
-# at a rate of decrease_by.
-
-track_independent <- function(data, at_least, threshold, decrease_by = 0.1, ...) {
-  df <- data %>% 
-    maimer::mm_independence(threshold = threshold,...)
-
-  
-  while(nrow(df) <= at_least){
-    threshold <- threshold - threshold*decrease_by
-    print(paste0('treh: ', threshold))
-    df <- data %>% maimer::mm_independence(threshold = threshold,...)
-  }
-  
-  return(df)
-}
-
-### 
-fix_name <- function(data, species_col) {
-  data %>% 
-    dplyr::mutate(Species = gsub(pattern = "\\s*\\[FRP-[A-Za-z0-9]+\\]|^\\d*_|\\s*\\d*$|.shp$", 
-                               "", !!dplyr::sym(species_col)),
-                Species = case_when(grepl('Thau', !!dplyr::sym(species_col)) ~ "Thalasseus sandvicensis", 
-                                    TRUE ~ !!dplyr::sym(species_col)))
-}
-
 
 ## Afinity
 afinity_index <- function(data, 
@@ -226,3 +220,25 @@ Q1 <- function(x){
 Q3 <- function(x){
   round(quantile(x)[[4]], 2)
 }
+
+
+lnorm_confint <- function(estimate, se, percent = 95){
+  if(length(estimate) != length(se))
+    cli::cli_abort("estimate and se must have the same number of values")
+  z <- qt((1 - percent/100) / 2, Inf, lower.tail = FALSE)
+  w <- exp(z * sqrt(log(1 + (se/estimate)^2)))
+  data.frame(lower_bound = estimate/w, upper_bound = estimate*w)
+}
+
+### 
+fix_name <- function(data, individual = "individual-local-identifier", phase = "") {
+  data %>% 
+    dplyr::rename(individual = individual) %>% 
+    mutate(species = gsub(pattern = "\\s*\\[FRP-[A-Za-z0-9]+\\]|^\\d*_|\\s*\\d*$", 
+                          "", individual),
+           species = case_when(grepl('Tha', species) ~ "Thalasseus sandvicensis", 
+                               TRUE ~ species),
+           phase = phase) %>% 
+    relocate(species, .after = individual)
+}
+

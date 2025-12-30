@@ -3,7 +3,7 @@ source("scripts/utils.R")
 source("setup.R")
 
 
-dataset_root <- "E:\\David\\Base_David2\\"
+dataset_root <- "datasets/Base_David"
 
 all_files <- list.files(path = dataset_root, pattern = ".csv$", full.names = TRUE,
                         recursive = TRUE)
@@ -21,15 +21,11 @@ all_hiv_data <- lapply(all_species_names, function(x){
   all_in_file <- list.files(path = x, pattern = ".csv$", full.names = TRUE, recursive = TRUE)
   all_in_file <- all_in_file[grepl(pattern = "ivernage", all_in_file)]
   ind_vol_data <- lapply(all_in_file, function(y){
-    print(basename(x))
-    df <- read.csv(y, check.names = FALSE)
+  
+    independen_event <- read.csv(y, check.names = FALSE) %>% 
+      dplyr::select("location-lat", "location-long", "timestamp", "individual-local-identifier") %>%
       # Evaluate event independence
-    independen_event <- track_independent(data = df, at_least = 5,
-                                          decrease_by = 0.05,
-                                          datetime = 'timestamp',
-                                          format = "%Y-%m-%d %H:%M:%OS",
-                                          threshold = 60*60,
-                                          only = TRUE)
+      ct::ct_independence(datetime = timestamp, format = "%Y-%m-%d %H:%M:%OS", threshold = 3600)
     
     ## Add i-th wintering information
     independen_event <- independen_event%>% 
@@ -45,7 +41,7 @@ write.csv(all_hiv_data, "datasets/hivernages.csv", row.names = FALSE)
 # Read back (not necessary if all_hiv_data was runned)
 wintering_data <- read.csv("datasets/hivernages.csv", check.names = FALSE)
 
-## Exclude non-event (ie. select events within 1 hour interval) data 
+## Get unique species ID
 species_id <- unique(wintering_data$`individual-local-identifier`)
 
 
@@ -77,18 +73,19 @@ for (sp_id in species_id) {
                      lon = "location-long", lat = "location-lat",
                      species_name = paste0(sp_id, "_", hiv))
     
-    #total_site <- length(st_geometry(hr)[[1]])
-    total_area <- as.numeric(st_area(st_geometry(hr)))/1e6 # km2
-    
     # wintering time
     wintering_time <- base::diff(range(wintering_df$datetime), units = 'days')
     sites <- as.numeric(sf::st_area(hr %>% st_cast(to = "POLYGON")))/1e6
-    sites_stats <- maimer::mm_describe_df(data.frame(sites = sites), 
+    
+    sites_stats <- ct::ct_describe_df(data.frame(sites = sites), 
                                           fn = list('sd', 'sum', 'std_error',
                                                     "Q1", "Q3")) %>% 
-      dplyr::mutate(Hivernage = hiv,
-                    `Temps d'hivernage` = wintering_time, 
-                    Species = sp_id)
+      dplyr::rename(homerange_size = sum) %>% 
+      dplyr::mutate(wintering = hiv,
+                    wintering_duration = wintering_time, 
+                    individual = sp_id) %>% 
+      dplyr::select(individual, wintering, homerange_size, wintering_duration)
+    
     print(sites_stats)
     all_stat <- rbind(all_stat, sites_stats)
     
@@ -98,65 +95,31 @@ for (sp_id in species_id) {
     
   }
   
-  # Calculate fidelity for each sp_id
-  if (length(all_wintering) > 1) {
-    names(all_wintering) <- NULL
-    intersections <- sf::st_area(do.call(sf::st_intersection, all_wintering))
-    unions <- sf::st_area(do.call(sf::st_union, all_wintering))
-    fidelity <- intersections/unions
-    fidelity_df <- rbind(fidelity_df, data.frame(Species = sp_id, Fidelity = fidelity))
-    
-  }
 }
 
 }
 
-# Write all_stat and fidelity_df
-
-write.csv(all_stat, "tables/home_range_stats.csv", row.names = FALSE)
-write.csv(fidelity_df, "tables/fidelity.csv", row.names = FALSE)
 
 # 
-all_stat <- read.csv("tables/home_range_stats.csv", check.names = FALSE) %>% 
-  fix_name(species_col = 'Species') %>% 
-  dplyr::select(-c(Variable, `CI Left`, `CI Right`)) %>% 
-  dplyr::relocate(Species, .before = 1) %>% 
-  dplyr::mutate(Hivernage = gsub("\\s*", "", Hivernage ))
+hr_stats <- all_stat %>% 
+  fix_name(individual = 'individual') %>% 
+  dplyr::relocate(species, .before = 1) %>% 
+  dplyr::mutate(wintering = gsub("\\s*", "", wintering),
+                wintering_duration = as.numeric(wintering_duration))
+# Write hr_stats
+write.csv(hr_stats, "tables/home_range_stats.csv", row.names = FALSE)
 
-all_stat %>% group_by(Species, Hivernage) %>% 
-summarise(N = round(mean(N)), `Min area` = mean(Min, na.rm = TRUE), 
-          `Max area` = mean(Max, na.rm = TRUE), `Mean area` = mean(Mean, na.rm = TRUE),
-          `SE area` = mean(std_error, na.rm = TRUE),
-          Median = mean(Median),
-          `Temps d'hivernage` = mean(`Temps d'hivernage`, na.rm = TRUE),
-          Q1 = mean(Q1), Q3 = mean(Q3)) %>% 
-  ungroup() %>% 
+hr_stats %>% group_by(species, wintering) %>% 
+summarise(`Min area` = min(homerange_size, na.rm = TRUE), 
+          `Max area` = max(homerange_size, na.rm = TRUE), 
+          Median = median(homerange_size),
+          `Mean area` = mean(homerange_size, na.rm = TRUE),
+          `SE area` = sd(homerange_size, na.rm = TRUE)/n(),
+          ###
+          `Min duration` = min(wintering_duration, na.rm = TRUE), 
+          `Max duration` = max(wintering_duration, na.rm = TRUE), 
+          `Median duration` = median(wintering_duration),
+          `Mean duration` = mean(wintering_duration, na.rm = TRUE),
+          `SE duration` = sd(wintering_duration, na.rm = TRUE)/n()) %>% 
+  ungroup() %>%
   write.csv("tables/home_range_stats_per_species.csv", row.names = FALSE)
-
-
-## Plot Home range: 
-ind_oi <- c("Recurvirostra avosetta [FRP-FS117863]_Hivernage1",
-            "Himantopus himantopus [FRP-FA63883]_Hivernage1", 
-            "Chroicocephalus genei [FRP-FS89746]_Hivernage1",
-            "Gelochelidon nilotica [FRP-GE13338]_Hivernage1",
-            "Thalasseus sandvicensis [FRP-GE13347]_Hivernage 1")
-
-all_hr <- paste0("home_range/", ind_oi, ".shp")
-
-hr_sf <- lapply(all_hr, function(x){
-  sf::read_sf(x) %>% 
-    dplyr::mutate(individual = gsub(".shp$", "", basename(x)))
-}) %>% dplyr::bind_rows() %>% 
-  dplyr::mutate(indi = gsub("_Hivernage1|_Hivernage 1", "", individual))
-
-## Merge home range
-all_hr_files <- list.files(path = "home_range", pattern = ".shp$", 
-                           full.names = TRUE)
-all_hr <- lapply(all_hr_files, function(x){
-  ind_name <- strsplit(basename(x), split = "\\.")[[1]][1]
-  sf::read_sf(x) %>% 
-    sf::st_cast(to = "POLYGON") %>% 
-    dplyr::mutate(individual = ind_name)
-}) %>% dplyr::bind_rows()
-
-sf::write_sf(all_hr, "home_range/all_hr.shp")
